@@ -4,9 +4,6 @@ from typing import List
 from utils.utils import NestedTensor
 from models.position_encoding import build_position_encoding
 
-from models.resnet import resnet_model
-from models.dino import dino_model, dino_model_with_hooks
-
 
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
@@ -29,18 +26,34 @@ def build_backbone(args):
     return_interm_layers = args.return_interm
 
     if "resnet" in args.backbone_arch:
+        from models.resnet import resnet_model
+
         backbone = resnet_model(
             args.backbone_arch, train_backbone, return_interm_layers, args.dilation
         )
-        num_channels = backbone.num_channels
     elif args.backbone_arch == "dinov2":
+        from models.dino import dino_model
+
         backbone = dino_model(-1 * args.enc_output_layer, return_interm_layers)
-        num_channels = backbone.num_channels
+
+    elif args.backbone_arch == "radio":
+        from models.radio import radio_model
+
+        backbone = radio_model(args.enc_output_layer)
+
+    elif args.backbone_arch == "radio-h":
+        from models.radio import radio_model_h
+
+        backbone = radio_model_h(args.enc_output_layer)
+
     elif args.backbone_arch == "dinov2_q":
+        from models.dino import dino_model_with_hooks
+
         backbone = dino_model_with_hooks(
             -1 * args.enc_output_layer, return_interm_layers
         )
-        num_channels = backbone.num_channels
+
+    num_channels = backbone.num_channels
 
     position_embedding = build_position_encoding(
         args.position_embedding, args.hidden_dim // 2

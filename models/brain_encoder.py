@@ -86,48 +86,6 @@ class brain_encoder(nn.Module):
             parcel = self.voxel_map[parcel]
             self.parcel_mask[parcel, i] = 1
 
-        # self.parcel_mask = (
-        #     torch.stack(
-        #         [
-        #             torch.zeros(dataset.num_hemi_voxels).scatter_(0, axis_parcel, 1)
-        #             for axis_parcel in dataset.parcels[0]
-        #         ]
-        #         + [
-        #             torch.zeros(dataset.num_hemi_voxels).scatter_(0, axis_parcel, 1)
-        #             for axis_parcel in dataset.parcels[1]
-        #         ]
-        #     )
-        #     .permute(1, 0)
-        #     .to(args.device)
-        # )
-        # print("self.parcel_mask.shape:", self.parcel_mask.shape)
-        # print("summed parcel mask", self.parcel_mask.sum(dim=1))
-        # print(
-        #     "sum parcel mask equal to ones",
-        #     (
-        #         self.parcel_mask.sum(dim=1)
-        #         == torch.ones_like(self.parcel_mask.sum(dim=1))
-        #     ).all(),
-        # )
-
-        # parcel_mask = dataset.masks
-        # weights = torch.randn(
-        #     dataset.num_parcels, self.linear_feature_dim, dataset.max_parcel_size
-        # )
-        # weights[~parcel_mask.unsqueeze(1).expand(-1, self.linear_feature_dim, -1)] = 0
-        # self.embed = torch.nn.Parameter(weights)
-
-        # self.embed_bias = nn.Parameter(
-        #     torch.randn(dataset.num_parcels, dataset.max_parcel_size)
-        # )
-        # self.embed_bias = torch.nn.Parameter(
-        #     torch.where(
-        #         parcel_mask,
-        #         self.embed_bias,
-        #         torch.tensor(0.0, device=self.embed_bias.device),
-        #     )
-        # )
-
         self.embed = nn.Sequential(nn.Linear(self.hidden_dim, dataset.num_hemi_voxels))
 
     def to_device(self, device):

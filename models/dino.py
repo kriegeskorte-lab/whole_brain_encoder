@@ -5,9 +5,7 @@ DINO Backbone modules.
 
 import torch
 import torch.nn.functional as F
-import torchvision
 from torch import nn
-from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List, Callable
 
 from utils.utils import NestedTensor

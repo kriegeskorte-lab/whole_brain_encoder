@@ -309,9 +309,10 @@ class nsd_dataset_custom(nsd_dataset_tempate):
         self,
         img_data,
         transform=None,
+        backbone_arch="dinov2_q",
     ):
         self.transform = transform
-        self.backbone_arch = "dinov2_q"
+        self.backbone_arch = backbone_arch
 
         self.img_data = img_data
 

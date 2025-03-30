@@ -87,6 +87,8 @@ def get_args_parser():
             "resnet50",
             "dinov2_special_token",
             "dinov2_q_special_token",
+            "radio",
+            "radio-h",
         ],
         default="dinov2_q",
         type=str,
@@ -239,17 +241,27 @@ def get_model_dir_args(
         args.enc_output_layer,
         args.run,
         args.hemi,
+        args.parcel_dir,
     )
 
 
 def get_model_dir(
-    output_path, backbone_arch, encoder_arch, subj, enc_output_layer, run, hemi
+    output_path,
+    backbone_arch,
+    encoder_arch,
+    subj,
+    enc_output_layer,
+    run,
+    hemi,
+    parcel_dir,
 ):
     if hemi is None:
         hemi = "both"
+    parcel_dir = Path(parcel_dir)
     p = (
         Path(output_path)
         / f"nsd_test/{backbone_arch}_{encoder_arch}"
+        / parcel_dir.name
         / f"subj_{int(subj):02}"
         / f"enc_{enc_output_layer}"
         / f"run_{run}"

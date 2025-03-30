@@ -1,11 +1,14 @@
 import os
+
+os.environ["MKL_SERVICE_FORCE_INTEL"] = "1"
+import numpy as np
+
 import argparse
 
 import torch
 import torch.utils.model_zoo
 from torchvision import transforms
 
-import numpy as np
 
 from scipy.stats import pearsonr as corr
 
@@ -60,10 +63,10 @@ def main(args):
             "SLURM_MEM_PER_NODE"
         )  # Memory per node in MB (may not always be set)
         args.gpus = os.getenv("SLURM_GPUS")
-
+        temp = Path(args.parcel_dir)
         wandb.init(
             project=args.wandb_p,
-            name=f"sub{args.subj} {args.hemi} {args.enc_output_layer} {wandb_r} {args.run}",
+            name=f"s{args.subj} {args.hemi} {temp.name} {args.enc_output_layer} {args.backbone_arch} r{args.run}",
             config={
                 "learning_rate": args.lr,
                 "architecture": f"{args.encoder_arch}",
@@ -76,14 +79,24 @@ def main(args):
         wandb.define_metric("val_perf_avg", summary="max")
         wandb.define_metric("val_perf_nonavg", summary="max")
 
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),  # convert the images to a PyTorch tensor
-            transforms.Normalize(
-                [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-            ),  # normalize the images color channels
-        ]
-    )
+    if "radio" in args.backbone_arch:
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize(496),
+                transforms.CenterCrop(496),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+    else:
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),  # convert the images to a PyTorch tensor
+                transforms.Normalize(
+                    [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+                ),  # normalize the images color channels
+            ]
+        )
     train_dataset = nsd_dataset(args, transform=transform, preload_data=True)
     trainloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -220,33 +233,35 @@ def main(args):
                             f"epoch {epoch}, {dataset_type} val_perf: {val_perf[dataset_type]} \n"
                         )
 
-                    try:
-                        if args.save_model:
-                            checkpoint_paths = [
-                                args.save_dir / f"checkpoint_{dataset_type}.pth"
-                            ]
-                            model_state_dict = model.state_dict()
+                    if args.save_model:
+                        checkpoint_paths = [
+                            args.save_dir / f"checkpoint_{dataset_type}.pth"
+                        ]
+                        model_state_dict = model.state_dict()
 
-                            model_state_dict = {
-                                k: v
-                                for k, v in model_state_dict.items()
-                                if "backbone_model" not in k
-                            }
+                        assert [
+                            k for k in model_state_dict.keys() if "input_proj" in k
+                        ], (
+                            f"input projection not in model state dict {model_state_dict.keys()}"
+                        )
 
-                            for checkpoint_path in checkpoint_paths:
-                                utils.save_on_master(
-                                    {
-                                        "model": model_state_dict,
-                                        "epoch": epoch,
-                                        "args": args,
-                                        "val_perf": best_val_perf[dataset_type],
-                                        "dataset_type": dataset_type,
-                                    },
-                                    checkpoint_path,
-                                )
-                    except Exception as e:
-                        print("Error saving model")
-                        print(e)
+                        model_state_dict = {
+                            k: v
+                            for k, v in model_state_dict.items()
+                            if "backbone_model" not in k or "input_proj" in k
+                        }
+
+                        for checkpoint_path in checkpoint_paths:
+                            utils.save_on_master(
+                                {
+                                    "model": model_state_dict,
+                                    "epoch": epoch,
+                                    "args": args,
+                                    "val_perf": best_val_perf[dataset_type],
+                                    "dataset_type": dataset_type,
+                                },
+                                checkpoint_path,
+                            )
 
                     np.save(
                         args.save_dir / f"{args.hemi}_val_corr_{dataset_type}.npy",
@@ -268,6 +283,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "model training and evaluation script", parents=[get_args_parser()]
     )
+    # parser = get_args_parser()
     args = parser.parse_args()
     if args.output_path:
         Path(args.output_path).mkdir(parents=True, exist_ok=True)
