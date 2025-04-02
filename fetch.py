@@ -239,3 +239,13 @@ def nsd_data(subj, hemi, split="test"):
         data.append(img_data)
 
     return data
+
+
+def nsd_labeled_area_mask(subj, hemi):
+    metadata_file = metadata(subj)
+
+    la = np.zeros(163842, dtype=bool)
+    for roi in metadata_file[f"{hemi}_rois"]:
+        la = np.logical_or(la, metadata_file[f"{hemi}_rois"][roi])
+
+    return la
