@@ -53,6 +53,7 @@ class nsd_dataset_tempate(Dataset):
                 parcel_path / f"{args.hemi}_labels_s{self.subj:02}.pt",
                 weights_only=True,
             )
+            self.valid_voxel_mask = torch.zeros(len(self.betas[0]), dtype=torch.bool)
             for parcel in self.parcels:
                 self.valid_voxel_mask[parcel] = True
             self.num_hemi_voxels = torch.sum(self.valid_voxel_mask).item()
@@ -62,16 +63,17 @@ class nsd_dataset_tempate(Dataset):
             print("Number of parcels: ", self.num_parcels)
         else:
             self.parcels = {}
+            self.valid_voxel_mask = torch.zeros(
+                sum([len(b[0]) for b in self.betas]), dtype=torch.bool
+            )
             for hemi in ["lh", "rh"]:
                 self.parcels[hemi] = torch.load(
                     parcel_path / f"{hemi}_labels_s{self.subj:02}.pt", weights_only=True
                 )
-        if self.hemi is not None:
-            self.valid_voxel_mask = torch.zeros(len(self.betas[0]), dtype=torch.bool)
-        else:
-            self.valid_voxel_mask = torch.zeros(
-                sum([len(b[0]) for b in self.betas]), dtype=torch.bool
-            )
+                for parcel in self.parcels:
+                    self.valid_voxel_mask[
+                        parcel + len(self.betas[0][0]) if hemi == "rh" else 0
+                    ] = True
 
     def plot_parcels(self):
         if self.overlap:
