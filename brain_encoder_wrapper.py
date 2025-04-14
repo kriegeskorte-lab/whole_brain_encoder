@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torchvision import transforms
-import torchvision
+import torch.nn.functional as F
 
 from models.activations import get_transformer_activations
 from models.brain_encoder import brain_encoder
@@ -488,6 +488,12 @@ def forward(model, imgs_data, input_args):
 
         torch.cuda.empty_cache()
 
+    res = {}
+    activations = np.concatenate([out["lh"], out["rh"]], axis=1)
+    corr_sims, mse_sims = calc_sims(model.subj, activations)
+    res["corr_sims"] = corr_sims
+    res["mse_sims"] = mse_sims
+
     # Compute parcel mean activity
     parcels = model.load_parcels()
     roi_labels = model.load_roi_labels()
@@ -512,7 +518,6 @@ def forward(model, imgs_data, input_args):
         elif input_args.save == "nsd_labeled":
             out[hemi] = out[hemi][:, la]
 
-    res = {}
     res["path"] = input_args.target_dir
     if input_args.save != "none":
         res["out"] = out
@@ -569,6 +574,77 @@ def forward(model, imgs_data, input_args):
     return res
 
 
+def pairwise_mse(x, y):
+    # x: tensor of shape (N, D)
+    # y: tensor of shape (M, D)
+    N, D = x.shape
+    M, _ = y.shape
+
+    # Compute squared norms for each row.
+    # Shape of x_norm_sq: (N, 1), shape of y_norm_sq: (M, 1)
+    x_norm_sq = (x**2).sum(dim=1, keepdim=True)  # (N, 1)
+    y_norm_sq = (y**2).sum(dim=1, keepdim=True)  # (M, 1)
+    print(x_norm_sq.shape)
+    print(y_norm_sq.shape)
+
+    # Compute the inner product between all pairs using matrix multiplication.
+    # This results in an (N, M) matrix.
+    dot_product = x @ y.t()  # (N, M)
+
+    # To apply the formula, we need to broadcast:
+    # - x_norm_sq over axis 1 (making it (N, M))
+    # - y_norm_sq over axis 0 (make it (N, M) by transposing or unsqueezing)
+    # Then subtract 2 * dot_product and divide by D.
+    print((x_norm_sq + y_norm_sq.t()).shape)
+    mse_matrix = (x_norm_sq + y_norm_sq.t() - 2 * dot_product) / D
+
+    return mse_matrix
+
+
+def calc_sims(subj, activations, device="cpu"):
+    activations = torch.from_numpy(activations).to(device)
+    test_betas = []
+    ncs = []
+    for hemi in ["lh", "rh"]:
+        nsd_data = fetch.nsd_data(subj, hemi, split=["test", "val"])
+        nsd_data = torch.from_numpy(nsd_data["betas"])
+
+        nc = torch.from_numpy(fetch.metadata(subj)[f"{hemi}_ncsnr"].squeeze())
+        ncs.append(nc)
+        test_betas.append(nsd_data)
+    betas_torch = torch.cat(test_betas, dim=1)
+    # normed_betas = F.normalize(betas_torch, p=2, dim=1)
+    betas_centered = betas_torch - betas_torch.mean(dim=1, keepdim=True)
+    betas_centered = betas_centered.to(device)
+
+    # activations = torch.from_numpy(activations)
+
+    # # Cosine similarity
+    # normed_acts = F.normalize(activations, p=2, dim=1)  # (N_class, 70949)
+    # cos_sims = torch.matmul(normed_betas, normed_acts.T)  # (515, N_class)
+
+    # Pearson correlation: center the activations
+    acts_centered = activations - activations.mean(dim=1, keepdim=True)
+    corr_sims = torch.matmul(betas_centered, acts_centered.T)
+    corr_sims /= (
+        betas_centered.norm(dim=1, keepdim=True)
+        * acts_centered.norm(dim=1).unsqueeze(0)
+        + 1e-6  # numerical stability
+    )
+
+    ncs = torch.cat(ncs, dim=0).to(device)
+    betas_torch *= ncs
+
+    # MSE loss
+    mse_sims = pairwise_mse(betas_torch, activations)
+
+    # cos_sims = cos_sims.to(torch.float32)  # shape (515, 1000)
+    corr_sims = corr_sims.to(torch.float32).cpu().numpy()  # shape (515, 1000)
+    mse_sims = mse_sims.to(torch.float32).cpu().numpy()  # shape (515, 1000)
+
+    return corr_sims, mse_sims
+
+
 def main():
     torch.serialization.add_safe_globals([argparse.Namespace, PosixPath])
 
@@ -590,6 +666,8 @@ def main():
     )
     argparser.add_argument("--runs", nargs="+", type=int, default=[1, 2])
     input_args = argparser.parse_args()
+
+    print("save attention", input_args.save_attention)
 
     assert input_args.subj is not None, "Please specify a subject number"
 

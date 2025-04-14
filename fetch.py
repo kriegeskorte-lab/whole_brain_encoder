@@ -3,7 +3,7 @@ import numpy as np
 import h5py
 import os
 import utils.args as args
-from datasets.nsd import nsd_dataset_avg
+from tqdm import tqdm
 
 model_results_dir = Path("/engram/nklab/algonauts/ethan/whole_brain_encoder/results")
 
@@ -87,12 +87,14 @@ def all_parcels(subj, hemi, strategy):
     return parcels
 
 
-def top_imgs_grid_path(imgtype, nimgs, subj, hemi, parcel_dir, cgs=130):
+def top_imgs_grid_path(
+    imgtype, nimgs, subj, hemi, parcel_dir, parcel_strategy="schaefer", cgs=130
+):
     if imgtype not in ["nsd", "imgnet", "generated"]:
         print(f"imgtype {imgtype} not recognized")
         return None
     base_imgs_dir = Path("/engram/nklab/algonauts/ethan/images/_curated")
-    imgs_dir = base_imgs_dir / f"top_{imgtype}_imgs_grid"
+    imgs_dir = base_imgs_dir / parcel_strategy / f"top_{imgtype}_imgs_grid"
     imgs_dir = imgs_dir / f"subj_{subj:02}"
     imgs_dir = imgs_dir / hemi
 
@@ -223,20 +225,51 @@ def split_corr(
 
 
 def nsd_data(subj, hemi, split="test"):
-    data = []
+    from datasets.nsd import nsd_dataset_avg
+
 
     os.chdir("/engram/nklab/algonauts/ethan/whole_brain_encoder")
     a = args.get_default_args()
     a.subj = subj
     a.hemi = hemi
-    dataset = nsd_dataset_avg(a, split="test")
 
-    for img, fmri in dataset:
-        img_data = {}
-        img_data["img"] = img
-        img_data["betas"] = fmri["betas"]
+    if isinstance(split, str):
+        split = [split]
+    
+    result = []
+    for sp in split:
+        data = []
+        dataset = nsd_dataset_avg(a, split=sp)
 
-        data.append(img_data)
+        try:
+            import torch
+
+            dataset = torch.utils.data.DataLoader(
+                dataset, batch_size=16, shuffle=False, num_workers=4, pin_memory=True
+            )
+            for img, fmri in tqdm(dataset, desc=f"loading NSD {sp} data", leave=False):
+                img_data = {}
+                img_data["img"] = img
+                img_data["betas"] = fmri["betas"]
+
+                data.append(img_data)
+
+
+        except:
+            for img, fmri in tqdm(dataset, desc=f"loading NSD {sp} data", leave=False):
+                img_data = {}
+                img_data["img"] = img
+                img_data["betas"] = fmri["betas"]
+
+                data.append(img_data)
+
+        data = {key: torch.cat([d[key] for d in data], dim=0).numpy() for key in data[0]}
+        result.append(data)
+    
+    if len(result) == 1:
+        return result[0]
+    else:
+        data = {key: np.concatenate([d[key] for d in result], axis=0) for key in result[0]}
 
     return data
 
