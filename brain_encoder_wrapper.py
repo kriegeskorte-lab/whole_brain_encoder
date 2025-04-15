@@ -584,8 +584,6 @@ def pairwise_mse(x, y):
     # Shape of x_norm_sq: (N, 1), shape of y_norm_sq: (M, 1)
     x_norm_sq = (x**2).sum(dim=1, keepdim=True)  # (N, 1)
     y_norm_sq = (y**2).sum(dim=1, keepdim=True)  # (M, 1)
-    print(x_norm_sq.shape)
-    print(y_norm_sq.shape)
 
     # Compute the inner product between all pairs using matrix multiplication.
     # This results in an (N, M) matrix.
@@ -595,7 +593,6 @@ def pairwise_mse(x, y):
     # - x_norm_sq over axis 1 (making it (N, M))
     # - y_norm_sq over axis 0 (make it (N, M) by transposing or unsqueezing)
     # Then subtract 2 * dot_product and divide by D.
-    print((x_norm_sq + y_norm_sq.t()).shape)
     mse_matrix = (x_norm_sq + y_norm_sq.t() - 2 * dot_product) / D
 
     return mse_matrix
@@ -634,6 +631,7 @@ def calc_sims(subj, activations, device="cpu"):
 
     ncs = torch.cat(ncs, dim=0).to(device)
     betas_torch *= ncs
+    activations *= ncs
 
     # MSE loss
     mse_sims = pairwise_mse(betas_torch, activations)
