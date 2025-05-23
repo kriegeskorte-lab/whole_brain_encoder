@@ -88,7 +88,10 @@ def get_args_parser():
             "dinov2_special_token",
             "dinov2_q_special_token",
             "radio",
+            "eradio",
             "radio-h",
+            "dinov2_q_large",
+            "clip",
         ],
         default="dinov2_q",
         type=str,
@@ -168,7 +171,7 @@ def get_args_parser():
         "--num_workers", default=4, type=int, help="number of data loading num_workers"
     )
     parser.add_argument(
-        "--epochs", default=20, type=int, help="number of total epochs to run"
+        "--epochs", default=10, type=int, help="number of total epochs to run"
     )
     parser.add_argument("--batch_size", default=16, type=int, help="mini-batch size")
     parser.add_argument(

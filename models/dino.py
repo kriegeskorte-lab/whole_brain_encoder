@@ -85,6 +85,81 @@ class dino_model_with_hooks(nn.Module):
         return out
 
 
+class dino_model_with_hooks_large(nn.Module):
+    def __init__(self, enc_output_layer, return_interm_layers=False):
+        super().__init__()
+
+        # self.backbone = torch.hub.load(
+        #     "facebookresearch/dinov2", "dinov2_vitb14", source="local"
+        # )
+        self.backbone = torch.hub.load(
+            "/home/eh2976/.cache/torch/hub/facebookresearch_dinov2_main",
+            "dinov2_vitg14_reg",
+            source="local",
+        )
+        self.num_channels = 1536
+
+        for name, parameter in self.backbone.named_parameters():
+            parameter.requires_grad_(False)
+
+        self.qkv_feats = {"qkv_feats": torch.empty(0)}
+
+        self.backbone._modules["blocks"][enc_output_layer]._modules["attn"]._modules[
+            "qkv"
+        ].register_forward_hook(self.hook_fn_forward_qkv)  # self.hook_fn_forward_qkv())
+
+        self.return_interm_layers = return_interm_layers
+
+    def hook_fn_forward_qkv(self, module, input, output) -> Callable:
+        #         def fn(_, __, output):
+        self.qkv_feats["qkv_feats"] = output
+
+    def forward(self, tensor_list: NestedTensor):
+        xs = tensor_list.tensors
+
+        # print(xs.shape)
+        h, w = int(xs.shape[2] / 14), int(xs.shape[3] / 14)
+
+        #         self.qkv_feats = []
+        #         qkv_feats = []
+
+        #         self.backbone._modules["blocks"][-1]._modules["attn"]._modules["qkv"].register_forward_hook(lambda self, input, output: qkv_feats.append(output))
+
+        xs = self.backbone.get_intermediate_layers(xs)[0]
+
+        feats = self.qkv_feats["qkv_feats"]
+        # Dimensions
+        nh = 12  # Number of heads
+        d_head = feats.shape[-1] // (3 * nh)
+        feats = feats.reshape(xs.shape[0], feats.shape[1], 3, nh, d_head).permute(
+            2, 0, 3, 1, 4
+        )
+        # feats = feats.reshape(xs.shape[0], xs.shape[1] + 1, 3, nh, -1 // nh).permute(
+        #     2, 0, 3, 1, 4
+        # )
+        q, k, v = feats[0], feats[1], feats[2]
+        q = q.transpose(1, 2).reshape(xs.shape[0], feats.shape[3], -1)
+
+        # xs = q[:, 1:, :]
+        xs = q[:, 1 : 1 + (h * w), :]
+
+        xs = {"layer_top": xs}
+        #         xs = self.body(tensor_list.tensors)
+
+        out: Dict[str, NestedTensor] = {}
+        for name, x in xs.items():
+            m = tensor_list.mask
+            assert m is not None
+
+            x = torch.reshape(x, (x.shape[0], h, w, self.num_channels)).permute(
+                0, 3, 1, 2
+            )
+
+            mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(torch.bool)[0]
+            out[name] = NestedTensor(x, mask)
+        return out
+
+
 class dino_model(nn.Module):
     def __init__(self, enc_output_layer, return_interm_layers=False):
         super().__init__()

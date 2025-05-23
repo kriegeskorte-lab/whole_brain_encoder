@@ -36,6 +36,8 @@ def main(args):
     args.subject_submission_dir = os.path.join(
         args.parent_submission_dir, "subj" + args.subj
     )
+    if args.backbone_arch == "dinov2_q_large":
+        args.hidden_dim = 1536
 
     if args.output_path:
         args.save_dir = get_model_dir_args(args)
@@ -79,7 +81,16 @@ def main(args):
         wandb.define_metric("val_perf_avg", summary="max")
         wandb.define_metric("val_perf_nonavg", summary="max")
 
-    if "radio" in args.backbone_arch:
+    if "eradio" in args.backbone_arch:
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize(512),
+                transforms.CenterCrop(512),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+    elif "radio" in args.backbone_arch:
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -87,6 +98,16 @@ def main(args):
                 transforms.CenterCrop(496),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
+        )
+    elif "clip" in args.backbone_arch:
+        import open_clip
+
+        _, _, preprocess = open_clip.create_model_and_transforms(
+            "ViT-L-14", pretrained="openai"
+        )
+
+        transform = transforms.Compose(
+            [transforms.ToPILImage()] + list(preprocess.transforms)
         )
     else:
         transform = transforms.Compose(
@@ -239,11 +260,12 @@ def main(args):
                         ]
                         model_state_dict = model.state_dict()
 
-                        assert [
-                            k for k in model_state_dict.keys() if "input_proj" in k
-                        ], (
-                            f"input projection not in model state dict {model_state_dict.keys()}"
-                        )
+                        if args.backbone_arch == "radio-h":
+                            assert [
+                                k for k in model_state_dict.keys() if "input_proj" in k
+                            ], (
+                                f"input projection not in model state dict {model_state_dict.keys()}"
+                            )
 
                         model_state_dict = {
                             k: v

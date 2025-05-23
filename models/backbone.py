@@ -41,6 +41,11 @@ def build_backbone(args):
 
         backbone = radio_model(args.enc_output_layer)
 
+    elif args.backbone_arch == "eradio":
+        from models.radio import eradio_model
+
+        backbone = eradio_model(args.enc_output_layer)
+
     elif args.backbone_arch == "radio-h":
         from models.radio import radio_model_h
 
@@ -52,6 +57,23 @@ def build_backbone(args):
         backbone = dino_model_with_hooks(
             -1 * args.enc_output_layer, return_interm_layers
         )
+    elif args.backbone_arch == "dinov2_q_large":
+        from models.dino import dino_model_with_hooks_large
+
+        backbone = dino_model_with_hooks_large(
+            -1 * args.enc_output_layer, return_interm_layers
+        )
+    elif args.backbone_arch == "clip":
+        from models.clip import clip_model
+
+        backbone = clip_model(-1 * args.enc_output_layer, return_interm_layers)
+        num_channels = backbone.num_channels
+        position_embedding = build_position_encoding(
+            args.position_embedding, args.hidden_dim // 2
+        )
+        model = Joiner(backbone, position_embedding)
+        model.num_channels = num_channels
+        return model
 
     num_channels = backbone.num_channels
 

@@ -23,6 +23,7 @@ class brain_encoder(nn.Module):
 
         ### Brain encoding model
         # if args.encoder_arch == 'transformer':
+        self.backbone_model = build_backbone(args)
 
         self.transformer = build_transformer(args)
 
@@ -45,7 +46,6 @@ class brain_encoder(nn.Module):
         ### backbone_arch for feature exraction
         # if isinstance(args.enc_layers, int) or len(args.enc_layers) == 1:
         self.single_backbone = True
-        self.backbone_model = build_backbone(args)
         # else:
         #     self.single_backbone = False
         #     self.backbones = []

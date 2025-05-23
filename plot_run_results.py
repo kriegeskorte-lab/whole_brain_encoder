@@ -70,8 +70,16 @@ def add_title_to_image(
     return new_image
 
 
-def plot_parcels_return_img(
-    lh, rh, title="", cmap="RdBu_r", vmin=0, clip=1, badcolor="grey", colorbar=True
+def plot_parcels_return_svg(
+    lh,
+    rh,
+    save_path,
+    title="",
+    cmap="RdBu_r",
+    vmin=0,
+    clip=1,
+    badcolor="grey",
+    **kwargs,
 ):
     # =============================================================================
     # Plot parameters for colorbar
@@ -90,9 +98,54 @@ def plot_parcels_return_img(
 
     with suppress_print():
         # cortex.quickshow(vertex_data, ax=ax)  # Render on the given Axes object
+        cortex.quickflat.make_png(
+            save_path,
+            vertex_data,
+            # height=1024,
+            # width=1024,
+            **kwargs,
+        )
+
+        # ax.imshow(img, aspect="auto")
+        # ax.axis("off")  # Optional: turn off axes for a cleaner lookax.axis("off")
+
+
+def plot_parcels_return_img(
+    lh,
+    rh,
+    title="",
+    cmap="RdBu_r",
+    vmin=0,
+    clip=1,
+    badcolor="grey",
+    **kwargs,
+):
+    # =============================================================================
+    # Plot parameters for colorbar
+    # =============================================================================
+    plt.rc("xtick", labelsize=19)
+    plt.rc("ytick", labelsize=19)
+
+    # =============================================================================
+    # Prepare data for plotting
+    # =============================================================================
+    subject = "fsaverage"
+    data = np.append(lh, rh)
+    cmap = plt.cm.get_cmap(cmap).copy()
+    cmap.set_bad(color=badcolor)
+    vertex_data = cortex.Vertex(
+        data, subject, cmap=cmap, vmin=vmin, vmax=clip, **kwargs
+    )
+
+    with suppress_print():
+        # cortex.quickshow(vertex_data, ax=ax)  # Render on the given Axes object
         buffer = BytesIO()
         cortex.quickflat.make_png(
-            buffer, vertex_data, height=1024, width=1024, dpi=300, with_colorbar=colorbar
+            buffer,
+            vertex_data,
+            # height=1024,
+            # width=1024,
+            **kwargs,
         )
 
         # ax.imshow(img, aspect="auto")
@@ -108,7 +161,15 @@ def plot_parcels_return_img(
 
 
 def plot_parcels(
-    lh, rh, title="", fig_path=None, cmap="RdBu_r", vmin=0, clip=1, badcolor="grey"
+    lh,
+    rh,
+    title="",
+    fig_path=None,
+    cmap="RdBu_r",
+    vmin=0,
+    clip=1,
+    badcolor="grey",
+    **kwargs,
 ):
     # =============================================================================
     # Plot parameters for colorbar
@@ -124,7 +185,7 @@ def plot_parcels(
     cmap = plt.cm.get_cmap(cmap).copy()
     cmap.set_bad(color=badcolor)
     vertex_data = cortex.Vertex(
-        data, subject, cmap=cmap, vmin=vmin, vmax=clip
+        data, subject, cmap=cmap, vmin=vmin, vmax=clip, **kwargs
     )  # "afmhot"
 
     # cmap = plt.cm.get_cmap("Oranges").copy()
@@ -138,7 +199,8 @@ def plot_parcels(
     if fig_path is not None:
         plt.savefig(fig_path, dpi=300)
     else:
-        plt.show()
+        # plt.show()
+        pass
 
 
 def plot_run_results(args, avg_or_nonavg):

@@ -78,7 +78,7 @@ def train_one_epoch(
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         running_loss += loss.item()
-        if batch_idx % print_freq == print_freq - 1:
+        if args.wandb_p and batch_idx % print_freq == print_freq - 1:
             wandb.log(
                 {
                     "Training Loss": running_loss / print_freq,

@@ -1,9 +1,16 @@
+# import sys
+# import os
+
+# sys.path.insert(0, "/engram/nklab/algonauts/ethan/whole_brain_encoder")
+# os.chdir("/engram/nklab/algonauts/ethan/whole_brain_encoder")
 from pathlib import Path
 import numpy as np
 import h5py
 import os
 import utils.args as args
 from tqdm import tqdm
+from dataclasses import dataclass, field
+from typing import Dict
 
 model_results_dir = Path("/engram/nklab/algonauts/ethan/whole_brain_encoder/results")
 
@@ -23,9 +30,9 @@ def get_parcel_list(subj, parcel_strategy="schaefer"):
     return parcels
 
 
-def all_parcel_list(subj, hemi, parcel_strategy="schaefer"):
+def all_parcel_list(subj, hemi, return_parcel_num=False, parcel_strategy="schaefer"):
     parcel_list = get_parcel_list(subj, parcel_strategy)[hemi] + list(
-        overlap_labeled_parcels(subj, hemi, parcel_strategy).keys()
+        overlap_labeled_parcels(subj, hemi, return_parcel_num, parcel_strategy).keys()
     )
     return parcel_list
 
@@ -196,13 +203,21 @@ def gen_imgs_activations(subj, hemi, parcel_dir, cgs=130, parcel_strategy="schae
     return activations
 
 
-def nsd_activations(subj, split="test", parcel_strategy="schaefer"):
+def nsd_activations(subj, split="test", split_subj=None, parcel_strategy="schaefer"):
     model_dir = (
         model_results_dir / parcel_strategy / "enc_1_3_5_7_run_1_2/" / f"subj_{subj:02}"
     )
-    model_test_file = np.load(model_dir / f"{split}.npy", allow_pickle=True).item()
+    split_subj = f"_splitsubj{split_subj}" if split_subj is not None else ""
 
-    return model_test_file
+    fp = model_dir / f"{split}{split_subj}.h5"
+    if fp.exists():
+        with h5py.File(fp, "r") as h5_file:
+            out = {key: h5_file[key][()] for key in h5_file.keys()}
+    else:
+        fp = fp.with_suffix(".npy")
+        out = np.load(fp, allow_pickle=True).item()["out"]
+
+    return out
 
 
 def ensemble_model_dir(subj, strategy, enc_output_layers=[1, 3, 5, 7], runs=[1, 2]):
@@ -227,7 +242,6 @@ def split_corr(
 def nsd_data(subj, hemi, split="test"):
     from datasets.nsd import nsd_dataset_avg
 
-
     os.chdir("/engram/nklab/algonauts/ethan/whole_brain_encoder")
     a = args.get_default_args()
     a.subj = subj
@@ -235,7 +249,7 @@ def nsd_data(subj, hemi, split="test"):
 
     if isinstance(split, str):
         split = [split]
-    
+
     result = []
     for sp in split:
         data = []
@@ -254,7 +268,6 @@ def nsd_data(subj, hemi, split="test"):
 
                 data.append(img_data)
 
-
         except:
             for img, fmri in tqdm(dataset, desc=f"loading NSD {sp} data", leave=False):
                 img_data = {}
@@ -263,13 +276,17 @@ def nsd_data(subj, hemi, split="test"):
 
                 data.append(img_data)
 
-        data = {key: torch.cat([d[key] for d in data], dim=0).numpy() for key in data[0]}
+        data = {
+            key: torch.cat([d[key] for d in data], dim=0).numpy() for key in data[0]
+        }
         result.append(data)
-    
+
     if len(result) == 1:
         return result[0]
     else:
-        data = {key: np.concatenate([d[key] for d in result], axis=0) for key in result[0]}
+        data = {
+            key: np.concatenate([d[key] for d in result], axis=0) for key in result[0]
+        }
 
     return data
 
@@ -282,3 +299,160 @@ def nsd_labeled_area_mask(subj, hemi):
         la = np.logical_or(la, metadata_file[f"{hemi}_rois"][roi])
 
     return la
+
+
+def top_generated_imgs(
+    subj, hemi, parcel_dir, parcel_strategy="schaefer", max_num_imgs=32
+):
+    from PIL import Image
+
+    parcel_info = parcel(subj, hemi, parcel_dir, parcel_strategy)
+    roi_mask = np.zeros(163842, dtype=bool)
+    roi_mask[parcel_info["parcel"]] = 1
+    if isinstance(parcel_dir, int) or parcel_dir.isdigit():
+        p = int(parcel_dir)
+        att_key = "candidate_attention"
+    else:
+        att_key = "labeled_attention"
+        parcel_map = overlap_labeled_parcels(
+            subj, hemi, return_parcel_num=True, parcel_strategy=parcel_strategy
+        )
+        p = parcel_map[parcel_dir]
+
+    activations = gen_imgs_activations(
+        subj, hemi, parcel_dir, parcel_strategy=parcel_strategy
+    )
+    img_paths = activations["img_paths"]
+    mean_activation = activations["parcel_mean_activity"][hemi][:, p]
+
+    top_img_indices = np.argsort(mean_activation)[::-1]
+
+    top_generated_imgs = []
+    top_img_paths = []
+    top_img_activations = []
+    for rank, i in enumerate(top_img_indices[:max_num_imgs]):
+        img_path = img_paths[i]
+
+        # some img_paths are broken since they were created before the new folder structure was created
+        if "kmeans" not in str(img_paths[i]) and "schaefer" not in str(img_paths[i]):
+            parts = list(img_path.parts)
+            try:
+                index = parts.index("unlabeled_parcels")
+                # Insert "strategy" right after "unlabeled_parcels"
+                parts.insert(index + 1, parcel_strategy)
+            except ValueError:
+                raise ValueError(
+                    "The specified folder 'unlabeled_parcels' was not found in the path."
+                )
+            img_path = Path(*parts)
+        top_generated_imgs.append(Image.open(img_path))
+        top_img_paths.append(img_path)
+        top_img_activations.append(mean_activation[i])
+
+    return top_generated_imgs, top_img_paths, top_img_activations
+
+
+def top_imgnet_imgs(
+    subj, hemi, parcel_dir, parcel_strategy="schaefer", max_num_imgs=32
+):
+    from PIL import Image
+    from torchvision import transforms
+
+    imgnet_paths = imagenet_paths(subj, parcel_strategy)
+    imagenet_activation_dist = imagenet_activations(
+        subj, hemi, str(parcel_dir), parcel_strategy
+    )
+
+    # plot good imagenet images
+    top_imagenet_idxs = np.argsort(imagenet_activation_dist)[::-1]
+
+    top_imgnet_imgs = []
+    top_imgnet_paths = []
+    top_imgnet_activations = []
+    for i, idx in enumerate(top_imagenet_idxs[:max_num_imgs]):
+        img_path = imgnet_paths[idx]
+        img = Image.open(img_path)
+        img = transforms.Resize(500)(img)
+        img = transforms.CenterCrop(500)(img)
+
+        top_imgnet_imgs.append(img)
+        top_imgnet_paths.append(img_path)
+        top_imgnet_activations.append(imagenet_activation_dist[idx])
+
+    return top_imgnet_imgs, top_imgnet_paths, top_imgnet_activations
+
+
+@dataclass
+class NSDImage:
+    subj: int
+    hemi: str
+    parcel_dir: int
+    img: np.ndarray
+    activation: Dict[int, float] = field(default_factory=dict)
+    model_activation: Dict[int, float] = field(default_factory=dict)
+
+
+def top_NSD_imgs(
+    subj, hemi, split="test", split_subjs=None, parcel_strategy="schaefer"
+):
+    nsd_test = nsd_data(subj=subj, hemi=hemi, split=split)
+
+    if split_subjs is not None:
+        nsd_model_acts = np.zeros(
+            (len(nsd_test["betas"]), len(split_subjs), nsd_test["betas"].shape[1])
+        )
+        for i in range(len(split_subjs)):
+            nsd_model_acts[:, i, :] = nsd_activations(
+                subj, split=split, split_subj=split_subjs[i], parcel_strategy="schaefer"
+            )[hemi]
+
+    nsd_test_model_activations = [{} for _ in range(len(nsd_test["betas"]))]
+
+    nsd_test_activations = [{} for _ in range(len(nsd_test["betas"]))]
+    top_nsd_idxs = {}
+    top_nsd_model_idxs = {}
+    labels = np.load(
+        f"/engram/nklab/algonauts/ethan/whole_brain_encoder/parcels/schaefer/{hemi}_labels_s{subj:02}.npy",
+        allow_pickle=True,
+    ).item()
+    # for parcel_dir in get_parcel_list(subj, parcel_strategy)[hemi]:
+    #     parcel_info = parcel(subj, hemi, parcel_dir, parcel_strategy)
+    # roi_mask = np.zeros(163842, dtype=bool)
+    # roi_mask[parcel_info["parcel"]] = 1
+    for parcel_dir in range(501):
+        roi_mask = np.zeros(163842, dtype=bool)
+        roi_mask[labels["parcels"][parcel_dir]] = 1
+        parcel_acts = np.mean(nsd_test["betas"][:, roi_mask], axis=1)
+        if split_subjs is not None:
+            model_parcel_acts = np.mean(nsd_model_acts[:, :, roi_mask], axis=2)
+            top_nsd_model_idxs[parcel_dir] = np.argsort(model_parcel_acts)[::-1]
+        else:
+            model_parcel_acts = np.full_like(parcel_acts, np.nan)
+        top_nsd_idxs[parcel_dir] = np.argsort(parcel_acts)[::-1]
+
+        for i, (betas_act, model_act) in enumerate(zip(parcel_acts, model_parcel_acts)):
+            nsd_test_activations[i][parcel_dir] = betas_act
+            if split_subjs is not None:
+                nsd_test_model_activations[i][parcel_dir] = {}
+                for s, split_subj in enumerate(split_subjs):
+                    nsd_test_model_activations[i][parcel_dir][split_subj] = model_act[
+                        s
+                    ].item()
+
+    nsd_test_imgs = [
+        NSDImage(
+            subj=subj,
+            hemi=hemi,
+            parcel_dir=parcel_dir,
+            img=img,
+            activation=betas_act,
+            model_activation=model_act,
+        )
+        for img, betas_act, model_act in zip(
+            nsd_test["img"],
+            nsd_test_activations,
+            nsd_test_model_activations,
+        )
+    ]
+
+    return nsd_test_imgs, top_nsd_idxs, top_nsd_model_idxs

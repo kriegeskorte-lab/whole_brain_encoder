@@ -22,6 +22,8 @@ from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from scipy import ndimage
 
+import h5py
+
 
 # argparser needs: subj
 class BrainEncoderWrapper:
@@ -69,6 +71,16 @@ class BrainEncoderWrapper:
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
             )
+        elif "clip" in backbone_arch:
+            import open_clip
+
+            _, _, preprocess = open_clip.create_model_and_transforms(
+                "ViT-L-14", pretrained="openai"
+            )
+
+            self.transform = transforms.Compose(
+                [transforms.ToPILImage()] + list(preprocess.transforms)
+            )
         elif backbone_arch == "dinov2_q":
             self.transform = transforms.Compose(
                 [
@@ -78,6 +90,15 @@ class BrainEncoderWrapper:
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
             )
+        else:
+            self.transform = transforms.Compose(
+                [
+                    transforms.ToTensor(),  # convert the images to a PyTorch tensor
+                    transforms.Normalize(
+                        [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+                    ),  # normalize the images color channels
+                ]
+            )
 
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -85,12 +106,13 @@ class BrainEncoderWrapper:
             "lh": [],
             "rh": [],
         }
+        print(f"backbone arch: {self.backbone_arch}")
         for hemi in ["lh", "rh"]:
             for r in runs:
                 for layer_num in self.enc_output_layer:
                     model_path = get_model_dir(
                         args.output_path,
-                        backbone_arch,
+                        self.backbone_arch,
                         encoder_arch,
                         self.subj,
                         layer_num,
@@ -376,6 +398,12 @@ class BrainEncoderWrapper:
             for model_path in self.model_paths[hemi]:
                 if num_gpus == 2:
                     device = "cuda:0" if hemi == "lh" else "cuda:1"
+                elif num_gpus == 4:
+                    for part in model_path.parts:
+                        if part.startswith("enc_"):
+                            layer_int = int(part.split("_", 1)[1])
+                            break
+                    device = f"cuda:{int((layer_int - 1) / 2)}"
                 else:
                     device = "cuda:0"  # default device if not using 2 GPUs
                 model, args, _ = self.load_model_path(
@@ -408,7 +436,7 @@ class BrainEncoderWrapper:
                 param.requires_grad = False
 
         imgs = images.to(next(model.parameters()).device, non_blocking=True)
-        print("imgs", imgs.shape)
+        # print("imgs", imgs.shape)
         outputs = model(imgs)
         outputs = outputs["pred"]
 
@@ -439,7 +467,7 @@ def forward(model, imgs_data, input_args):
     if model.backbone_arch == "dinov2_q":
         batch_size = 26
     else:
-        batch_size = 12
+        batch_size = 4
     imgs_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -471,7 +499,7 @@ def forward(model, imgs_data, input_args):
 
         for hemi in ["lh", "rh"]:
             if torch.is_tensor(pred[hemi]):
-                pred[hemi] = pred[hemi].cpu().numpy()
+                pred[hemi] = pred[hemi].detach().cpu().numpy()
             out[hemi][idx * batch_size : idx * batch_size + len(pred[hemi])] = pred[
                 hemi
             ]
@@ -487,7 +515,6 @@ def forward(model, imgs_data, input_args):
                 ] = hemi_dec_attn_weights
 
         torch.cuda.empty_cache()
-
     res = {}
     activations = np.concatenate([out["lh"], out["rh"]], axis=1)
     corr_sims, mse_sims = calc_sims(model.subj, activations)
@@ -544,15 +571,15 @@ def forward(model, imgs_data, input_args):
                 input_args.subj, input_args.parcel_strategy
             )
             for hemi in ["lh", "rh"]:
-                zoom_factors = (1, 1, 8 / 31, 8 / 31)
+                # zoom_factors = (1, 1, 8 / 31, 8 / 31)
                 data = dec_attn_weights[hemi]
-                data = ndimage.zoom(data, zoom_factors, order=1)
-                mins = data.min(axis=(-2, -1), keepdims=True)
-                maxs = data.max(axis=(-2, -1), keepdims=True)
+                # data = ndimage.zoom(data, zoom_factors, order=1)
+                # mins = data.min(axis=(-2, -1), keepdims=True)
+                # maxs = data.max(axis=(-2, -1), keepdims=True)
 
-                # normalize to 0-255
-                data = (data - mins) / (maxs - mins) * 255
-                data = np.rint(data).astype(np.uint8)
+                # # normalize to 0-255
+                # data = (data - mins) / (maxs - mins) * 255
+                # data = np.rint(data).astype(np.uint8)
 
                 dec_attn_weights[hemi] = data
                 labeled_parcels = fetch.overlap_labeled_parcels(
@@ -649,10 +676,11 @@ def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--subj", type=int, default=None)
     argparser.add_argument("--split", type=str, default="test")
+    argparser.add_argument("--split_subj", type=int, default=None)
     argparser.add_argument("--target_dir", type=str, default=None)
     argparser.add_argument("--save_path", type=str, default=None)
     argparser.add_argument("--exist_skip", type=bool, default=False)
-    argparser.add_argument("--save_attention", type=bool, default=True)
+    argparser.add_argument("--save_attention", type=bool, default=False)
     argparser.add_argument("--parcel_dir", type=str, default=None)
     argparser.add_argument("--hemi", type=str, default=None)
     argparser.add_argument("--parcel_strategy", type=str, default="schaefer")
@@ -669,14 +697,20 @@ def main():
 
     assert input_args.subj is not None, "Please specify a subject number"
 
+    if input_args.backbone_arch == "dinov2_q_large":
+        num_gpus = 4
+    else:
+        num_gpus = 2
     model = BrainEncoderWrapper(
         subj=input_args.subj,
         enc_output_layer=[1, 3, 5, 7],
         runs=input_args.runs,
-        num_gpus=2,
+        num_gpus=num_gpus,
         parcel_strategy=input_args.parcel_strategy,
         backbone_arch=input_args.backbone_arch,
     )
+
+    assert model.transform is not None, "No transform found for this model"
 
     if input_args.split == "folder":
         assert input_args.target_dir is not None
@@ -733,7 +767,10 @@ def main():
         print(f"Saving results to {save_dir}")
 
         args = get_default_args()
-        args.subj = input_args.subj
+        if input_args.split_subj is not None:
+            args.subj = input_args.split_subj
+        else:
+            args.subj = input_args.subj
         imgs = {}
         betas = {}
         for hemi in ["lh", "rh"]:
@@ -758,8 +795,18 @@ def main():
         if input_args.backbone_arch != "dinov2_q":
             fn = f"{input_args.backbone_arch}_{split}.npy"
         else:
-            fn = f"{split}.npy"
-        np.save(save_dir / fn, res)
+            fn = f"{split}_splitsubj{input_args.split_subj}.npy"
+        # np.save(save_dir / fn, res)
+        out_file = (save_dir / fn).with_suffix(".h5")
+        with h5py.File(out_file, "w") as hf:
+            for key, arr in out.items():
+                # you can adjust compression or chunking per‐dataset here if you like
+                hf.create_dataset(
+                    key,
+                    data=arr,
+                    compression="gzip",  # or "lzf"
+                    chunks=True,  # auto-choose a good chunk shape
+                )
 
         val_correlation = {}
         for hemi in ["lh", "rh"]:
@@ -783,7 +830,7 @@ def main():
         if input_args.backbone_arch != "dinov2_q":
             fn = f"{input_args.backbone_arch}_{split}_corr_avg.npy"
         else:
-            fn = f"{split}_corr_avg.npy"
+            fn = f"{split}_splitsubj{input_args.split_subj}_corr_avg.npy"
         np.save(save_dir / fn, val_correlation)
 
 
