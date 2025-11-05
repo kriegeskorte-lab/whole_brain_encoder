@@ -142,25 +142,28 @@ def common_parcels_summary_dir(num_subj, hemi, parcel_name, parcel_strategy="sch
     )
 
 
-def imagenet_activations_path(subj, parcel_strategy):
+def imagenet_activations_path(subj, parcel_strategy, imagenet_dir_name="imagenet"):
     imagenet_results_dir = (
         model_results_dir
         / parcel_strategy
-        / "enc_1_3_5_7_run_1_2/imagenet"
+        / "enc_1_3_5_7_run_1_2"
+        / imagenet_dir_name
         / f"subj_{subj:02}"
     )
     fp = imagenet_results_dir / "activation_dist.h5"
     return fp
 
 
-def imagenet_paths(subj, parcel_strategy):
-    fp = imagenet_activations_path(subj, parcel_strategy)
+def imagenet_paths(subj, parcel_strategy, imagenet_dir_name="imagenet"):
+    fp = imagenet_activations_path(subj, parcel_strategy, imagenet_dir_name=imagenet_dir_name)
     with h5py.File(fp, "r") as f:
         return f["img_paths"][()]
 
 
-def imagenet_activations(subj, hemi, parcel_dir, parcel_strategy="schaefer"):
-    fp = imagenet_activations_path(subj, parcel_strategy)
+def imagenet_activations(
+    subj, hemi, parcel_dir, parcel_strategy="schaefer", imagenet_dir_name="imagenet"
+):
+    fp = imagenet_activations_path(subj, parcel_strategy, imagenet_dir_name=imagenet_dir_name)
     with h5py.File(fp, "r") as f:
         return f[hemi][parcel_dir][()]
 
@@ -177,9 +180,17 @@ def metadata(subj):
     return metadata
 
 
-def gen_imgs_dir(subj, hemi, parcel_dir, cgs=130, parcel_strategy="schaefer"):
-    base_imgs_dir = Path("/engram/nklab/algonauts/ethan/images/")
-    imgs_dir = base_imgs_dir / "unlabeled_parcels"
+def gen_imgs_dir(
+    subj,
+    hemi,
+    parcel_dir,
+    cgs=130,
+    parcel_strategy="schaefer",
+    images_dir_name="images",
+):
+    base_imgs_dir = Path("/engram/nklab/algonauts/ethan/")
+    imgs_dir = base_imgs_dir / images_dir_name
+    imgs_dir = imgs_dir / "unlabeled_parcels"
     imgs_dir = imgs_dir / parcel_strategy
     imgs_dir = imgs_dir / f"subj_{subj:02}"
     imgs_dir = imgs_dir / hemi
@@ -189,8 +200,17 @@ def gen_imgs_dir(subj, hemi, parcel_dir, cgs=130, parcel_strategy="schaefer"):
     return imgs_dir
 
 
-def gen_imgs_activations(subj, hemi, parcel_dir, cgs=130, parcel_strategy="schaefer"):
-    imgs_dir = gen_imgs_dir(subj, hemi, parcel_dir, cgs, parcel_strategy)
+def gen_imgs_activations(
+    subj,
+    hemi,
+    parcel_dir,
+    cgs=130,
+    parcel_strategy="schaefer",
+    images_dir_name="images",
+):
+    imgs_dir = gen_imgs_dir(
+        subj, hemi, parcel_dir, cgs, parcel_strategy, images_dir_name=images_dir_name
+    )
     if not imgs_dir.exists():
         print(f"imgs_dir {imgs_dir} does not exist")
         return None
@@ -302,7 +322,12 @@ def nsd_labeled_area_mask(subj, hemi):
 
 
 def top_generated_imgs(
-    subj, hemi, parcel_dir, parcel_strategy="schaefer", max_num_imgs=32
+    subj,
+    hemi,
+    parcel_dir,
+    parcel_strategy="schaefer",
+    max_num_imgs=100,
+    images_dir_name="images",
 ):
     from PIL import Image
 
@@ -320,7 +345,11 @@ def top_generated_imgs(
         p = parcel_map[parcel_dir]
 
     activations = gen_imgs_activations(
-        subj, hemi, parcel_dir, parcel_strategy=parcel_strategy
+        subj,
+        hemi,
+        parcel_dir,
+        parcel_strategy=parcel_strategy,
+        images_dir_name=images_dir_name,
     )
     img_paths = activations["img_paths"]
     mean_activation = activations["parcel_mean_activity"][hemi][:, p]
@@ -353,14 +382,25 @@ def top_generated_imgs(
 
 
 def top_imgnet_imgs(
-    subj, hemi, parcel_dir, parcel_strategy="schaefer", max_num_imgs=32
+    subj,
+    hemi,
+    parcel_dir,
+    parcel_strategy="schaefer",
+    max_num_imgs=32,
+    imagenet_dir_name="imagenet",
 ):
     from PIL import Image
     from torchvision import transforms
 
-    imgnet_paths = imagenet_paths(subj, parcel_strategy)
+    imgnet_paths = imagenet_paths(
+        subj, parcel_strategy, imagenet_dir_name=imagenet_dir_name
+    )
     imagenet_activation_dist = imagenet_activations(
-        subj, hemi, str(parcel_dir), parcel_strategy
+        subj,
+        hemi,
+        str(parcel_dir),
+        parcel_strategy,
+        imagenet_dir_name=imagenet_dir_name,
     )
 
     # plot good imagenet images
