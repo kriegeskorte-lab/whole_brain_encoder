@@ -1,4 +1,7 @@
-# whole_brain_encoder
+# In Silico Mapping of Visual Categorical Selectivity Across the Whole Brain
+Ethan Hwang, Hossein Adeli, Wenxuan Guo, Andrew Luo, and Nikolaus Kriegeskorte
+
+NeurIPS 2025
 
 # Run inference on your images using the ensemble model
 
@@ -97,3 +100,30 @@ python main.py --subj $SUBJECT --enc_output_layer $layer --run $RUN_ID --hemi $H
 conda activate xformers
 python main.py --parcel_dir ./parcels/nsd_labels --run $RUN_ID
 ```
+
+# Generate images using BrainDIVE
+
+See the [BrainDIVE github repo](https://github.com/aluo-x/BrainDiVE?tab=readme-ov-file#codebase) for environment requirements.
+
+```bash
+python generate_imgs.py --subj ${subj} --hemi ${hemi} --parcel_dir ${parcel_dir} --num_imgs_to_generate ${num_imgs}
+```
+
+# Running the statistical tests
+
+Prerequisities:
+- Predicted NSD activations for the target subject (for cross-subject retrieval)
+```bash
+python brain_encoder_wrapper.py --subject ${subj} --split_subj ${subj_target} --split ${train, test}
+```
+- BrainDIVE generated images and activation predictions
+- ImageNet predictions. Note that if you use any large dataset, you will need to refactor the data with ```img_gen/activation_dist.py``` so it can be read in a reasonable amount of time (i.e., prerank the top images for each parcel to avoid reading in all files).
+
+```bash
+cd clip_hypothesis
+python preprocess_nsd.py --subject ${subj}
+python preprocess_imgnet_gen.py --subject ${subj}
+```
+
+Then follow the script in ```clip_hypothesis/run_test.ipynb```.
+
