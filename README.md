@@ -13,7 +13,7 @@ The hosted ensemble model includes weights for two runs each for
 
 The model weights will be automatically downloaded from https://huggingface.co/ehwang/brain_encoder_weights/tree/main and the directory structure will automatically be created. Note that this will use around 11GB of space per subject. If you want to download the files manually, be sure that git lfs is installed.
 
-Alternatively, follow the training instructions below in [Reproducing the checkpoints](#reproducing-the-checkpoints) to train the checkpoints yourself. This should point to the `checkpoints/` folder. The expected directory structure is: `checkpoints/nsd_test/dinov2_q_transformer/subj_{subj_num:02}/enc_{enc_layer}/run_{run_num}/{hemi}`.
+Alternatively, follow the training instructions below in [Reproducing the checkpoints](#reproducing-the-checkpoints) to train the checkpoints yourself. This should point to the `checkpoints/` folder. The expected directory structure is: `checkpoints/nsd_test/dinov2_q_transformer/schaefer/subj_{subj_num:02}/enc_{enc_layer}/run_{run_num}/{hemi}`.
 
 ## Environment setup
 
@@ -44,7 +44,7 @@ conda activate pycortex
 python plot_run_results.py --ensemble 1 --subj $SUBJECT --split $SPLIT
 ```
 
-The following directory structure is expected: `results/enc_{"_".join(enc_layers)}_run_{"_".join(run_nums)}/subj_{subj_num:02}/{hemi}_test_corr_avg.npy`, for both hemispheres lh and rh. For example, `results/enc_1_3_5_7_run_1_2/subj_01/lh_test_corr_avg.npy`. Plots for the correlation across all voxels and correlation for known ROIs will be saved in the same directory.
+The following  structure is expected: `results/enc_{"_".join(enc_layers)}_run_{"_".join(run_nums)}/subj_{subj_num:02}/{hemi}_test_corr_avg.npy`, for both hemispheres lh and rh. For example, `results/schaefer/enc_1_3_5_7_run_1_2/subj_01/lh_test_corr_avg.npy`. Plots for the correlation across all voxels and correlation for known ROIs will be saved in the same .
 
 Valid splits include `train`, `val`, and `test`
 
