@@ -131,27 +131,34 @@ class BrainEncoderWrapper:
                             and parcel_strategy == "checkpoints"
                         ):
                             print(f"WARNING: Model path {model_path} is not valid")
-                            continue
 
                         print(
-                            f"Downloading checkpoint from huggingface into checkpoints/nsd_test/dinov2_q_transformer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}/"
+                            f"Downloading checkpoint from huggingface into checkpoints/nsd_test/dinov2_q_transformer/schaefer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}/"
                         )
                         fp = snapshot_download(
                             repo_id="ehwang/brain_encoder_weights",
-                            allow_patterns=f"checkpoints/nsd_test/dinov2_q_transformer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}/*",
+                            allow_patterns=f"dinov2_q_transformer/schaefer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}/*",
                         )
+                        print("fp", fp)
                         output_path = (
                             Path(args.output_path)
-                            / f"nsd_test/dinov2_q_transformer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}"
+                            / f"nsd_test/dinov2_q_transformer/schaefer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}"
                         )
+                        print("output path", output_path)
                         output_path.mkdir(exist_ok=True, parents=True)
                         src_path = (
                             Path(fp)
-                            / f"checkpoints/nsd_test/dinov2_q_transformer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}"
+                            / f"dinov2_q_transformer/schaefer/subj_{self.subj:02}/enc_{layer_num}/run_{r}/{hemi}"
                         )
+
+                        if not src_path.exists() or not any(src_path.rglob("*")):
+                            print(f"No files found in the downloaded snapshot at {src_path}")
+                            continue
+
                         for item in src_path.rglob(
                             "*"
                         ):  # Recursively match all files and subdirectories
+                            print("moving item", item)
                             dest = output_path / item.relative_to(src_path)
                             if item.is_symlink():
                                 # Resolve the symlink to the actual file
