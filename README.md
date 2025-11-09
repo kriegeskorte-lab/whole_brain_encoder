@@ -44,7 +44,7 @@ conda activate pycortex
 python plot_run_results.py --ensemble 1 --subj $SUBJECT --split $SPLIT
 ```
 
-The following  structure is expected: `results/enc_{"_".join(enc_layers)}_run_{"_".join(run_nums)}/subj_{subj_num:02}/{hemi}_test_corr_avg.npy`, for both hemispheres lh and rh. For example, `results/schaefer/enc_1_3_5_7_run_1_2/subj_01/lh_test_corr_avg.npy`. Plots for the correlation across all voxels and correlation for known ROIs will be saved in the same .
+The following  structure is expected: `results/schaefer/enc_{"_".join(enc_layers)}_run_{"_".join(run_nums)}/subj_{subj_num:02}/{hemi}_test_corr_avg.npy`, for both hemispheres lh and rh. For example, `results/schaefer/enc_1_3_5_7_run_1_2/subj_01/lh_test_corr_avg.npy`. Plots for the correlation across all voxels and correlation for known ROIs will be saved in the same .
 
 Valid splits include `train`, `val`, and `test`
 
